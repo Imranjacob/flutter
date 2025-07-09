@@ -2,9 +2,35 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'background_service.dart';
 
-void main() {
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await _initNotifications();
   runApp(AlertCenterApp());
+  await initializeService();
+
+}
+
+final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
+
+Future<void> _initNotifications() async {
+  const AndroidInitializationSettings initializationSettingsAndroid = AndroidInitializationSettings('@mipmap/ic_launcher');
+  const InitializationSettings initializationSettings = InitializationSettings(android: initializationSettingsAndroid);
+  await flutterLocalNotificationsPlugin.initialize(initializationSettings);
+}
+
+Future<void> showNotification(String title, String body) async {
+  const AndroidNotificationDetails androidPlatformChannelSpecifics = AndroidNotificationDetails(
+    'alerts_channel',
+    'Alerts',
+    importance: Importance.max,
+    priority: Priority.high,
+  );
+  const NotificationDetails platformChannelSpecifics = NotificationDetails(android: androidPlatformChannelSpecifics);
+  await flutterLocalNotificationsPlugin.show(0, title, body, platformChannelSpecifics);
 }
 
 class AlertCenterApp extends StatelessWidget {
@@ -28,6 +54,7 @@ class _AlertDashboardState extends State<AlertDashboard> {
   List<dynamic> _alerts = [];
   String supabaseUrl = '';
   String anonKey = '';
+  bool connected = false;
 
   @override
   void initState() {
@@ -46,6 +73,7 @@ class _AlertDashboardState extends State<AlertDashboard> {
   Future<void> fetchAlerts() async {
     if (supabaseUrl.isEmpty || anonKey.isEmpty) {
       print("⚠️ Supabase credentials not set.");
+      setState(() => connected = false);
       return;
     }
 
@@ -61,10 +89,15 @@ class _AlertDashboardState extends State<AlertDashboard> {
     if (response.statusCode == 200) {
       final List<dynamic> data = jsonDecode(response.body);
       setState(() {
-        _alerts = data.reversed.toList(); // Show newest first
+        _alerts = data.reversed.toList();
+        connected = true;
       });
+      if (data.isNotEmpty) {
+        showNotification("🔔 New Alert", data.first['message'] ?? '');
+      }
     } else {
       print('❌ Failed to fetch alerts: ${response.body}');
+      setState(() => connected = false);
     }
   }
 
@@ -72,7 +105,16 @@ class _AlertDashboardState extends State<AlertDashboard> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('📡 Supabase Alerts'),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Text('📡 Supabase Alerts'),
+            Text(
+              connected ? "🟢 Connected" : "🔴 Disconnected",
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+            )
+          ],
+        ),
         centerTitle: true,
         actions: [
           IconButton(
@@ -86,70 +128,69 @@ class _AlertDashboardState extends State<AlertDashboard> {
                 context,
                 MaterialPageRoute(builder: (_) => SettingsPage()),
               );
-              await _loadSettings(); // Reload if changed
+              await _loadSettings();
               await fetchAlerts();
+            },
+          ),
+          IconButton(
+            icon: Icon(Icons.message),
+            onPressed: () async {
+              await Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => ChatPage()),
+              );
             },
           ),
         ],
       ),
       body: _alerts.isEmpty
-          ? Center(child: Text("No alerts detected.Chill."))
+          ? Center(child: Text("No alerts detected. Chill."))
           : ListView.builder(
         itemCount: _alerts.length,
         itemBuilder: (context, index) {
           final alert = _alerts[index];
           final msg = alert['message'] ?? '';
           final ts = alert['timestamp'] ?? '';
-          final bot = alert['botname'] ?? '';
+          final bot = alert['bot_name'] ?? '';
           return Card(
-            margin: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            margin: EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             color: Colors.grey.shade900,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             child: Padding(
-              padding: const EdgeInsets.all(12.0),
+              padding: const EdgeInsets.all(10.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Container(
-                    padding: EdgeInsets.all(8),
-                    margin: EdgeInsets.only(bottom: 6),
+                    padding: EdgeInsets.all(6),
+                    margin: EdgeInsets.only(bottom: 4),
                     decoration: BoxDecoration(
                       color: Colors.deepPurple.shade200.withOpacity(0.2),
                       borderRadius: BorderRadius.circular(6),
                     ),
-                    child: Text(
-                      'Timestamp: $ts',
-                      style: TextStyle(fontSize: 16),
-                    ),
+                    child: Text('Timestamp: $ts', style: TextStyle(fontSize: 15)),
                   ),
                   Container(
-                    padding: EdgeInsets.all(8),
-                    margin: EdgeInsets.only(bottom: 6),
+                    padding: EdgeInsets.all(6),
+                    margin: EdgeInsets.only(bottom: 4),
                     decoration: BoxDecoration(
                       color: Colors.tealAccent.withOpacity(0.2),
                       borderRadius: BorderRadius.circular(6),
                     ),
-                    child: Text(
-                      'Message: $msg',
-                      style: TextStyle(fontSize: 16),
-                    ),
+                    child: Text('Message: $msg', style: TextStyle(fontSize: 15)),
                   ),
                   Container(
-                    padding: EdgeInsets.all(8),
+                    padding: EdgeInsets.all(6),
                     decoration: BoxDecoration(
                       color: Colors.orangeAccent.withOpacity(0.2),
                       borderRadius: BorderRadius.circular(6),
                     ),
-                    child: Text(
-                      'Bot Name: $bot',
-                      style: TextStyle(fontSize: 16),
-                    ),
+                    child: Text('Bot Name: $bot', style: TextStyle(fontSize: 15)),
                   ),
                 ],
               ),
             ),
           );
-
         },
       ),
     );
@@ -204,9 +245,7 @@ class _SettingsPageState extends State<SettingsPage> {
               decoration: InputDecoration(
                 labelText: "Supabase anon key",
                 suffixIcon: IconButton(
-                  icon: Icon(
-                    _obscureKey ? Icons.visibility : Icons.visibility_off,
-                  ),
+                  icon: Icon(_obscureKey ? Icons.visibility : Icons.visibility_off),
                   onPressed: () {
                     setState(() {
                       _obscureKey = !_obscureKey;
@@ -216,12 +255,78 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
               obscureText: _obscureKey,
             ),
-
             SizedBox(height: 20),
             ElevatedButton.icon(
               onPressed: _saveSettings,
               icon: Icon(Icons.save),
               label: Text("Save Settings"),
+            )
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class ChatPage extends StatefulWidget {
+  @override
+  _ChatPageState createState() => _ChatPageState();
+}
+
+class _ChatPageState extends State<ChatPage> {
+  TextEditingController _controller = TextEditingController();
+  String _response = '';
+
+  Future<void> sendCommand() async {
+    final command = _controller.text.trim();
+    if (command.isEmpty) return;
+
+    try {
+      final response = await http.get(Uri.parse('http://192.168.10.106:5000/status'));
+      if (response.statusCode == 200) {
+        setState(() => _response = response.body);
+      } else {
+        setState(() => _response = '❌ Failed to get status');
+      }
+    } catch (e) {
+      setState(() => _response = '❌ Error: $e');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text("💬 Command Center")),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          children: [
+            TextField(
+              controller: _controller,
+              decoration: InputDecoration(labelText: "/status or other command"),
+              onSubmitted: (_) => sendCommand(),
+            ),
+            SizedBox(height: 12),
+            ElevatedButton.icon(
+              onPressed: sendCommand,
+              icon: Icon(Icons.send),
+              label: Text("Send"),
+            ),
+            SizedBox(height: 20),
+            Expanded(
+              child: SingleChildScrollView(
+                child: Container(
+                  padding: EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.black26,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    _response,
+                    style: TextStyle(fontSize: 16),
+                  ),
+                ),
+              ),
             )
           ],
         ),
