@@ -4,24 +4,35 @@ final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
 FlutterLocalNotificationsPlugin();
 
 Future<void> initNotifications() async {
-  const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
-  const settings = InitializationSettings(android: androidSettings);
-  await flutterLocalNotificationsPlugin.initialize(settings);
+  const AndroidInitializationSettings androidSettings =
+  AndroidInitializationSettings('@mipmap/ic_stat_new_releases');
+
+  const InitializationSettings settings =
+  InitializationSettings(android: androidSettings);
+
+  await flutterLocalNotificationsPlugin.initialize(
+    settings,
+    onDidReceiveNotificationResponse: (details) {
+      // Handle notification taps if needed
+    },
+  );
 }
 
 Future<void> showNotification(String title, String body) async {
   const androidDetails = AndroidNotificationDetails(
-    'my_foreground',
-    'Background Service',
-    importance: Importance.max,
+    'mychannel',
+    'Alert Service',
+    channelDescription: 'Background service channel for alerts',
+    importance: Importance.high,
     priority: Priority.high,
+    icon: '@mipmap/ic_stat_new_releases',
+    ongoing: false,
   );
 
-  const notificationDetails = NotificationDetails(android: androidDetails);
   await flutterLocalNotificationsPlugin.show(
-    0,
+    DateTime.now().millisecondsSinceEpoch ~/ 1000, // Unique ID based on timestamp
     title,
     body,
-    notificationDetails,
+    const NotificationDetails(android: androidDetails),
   );
 }
