@@ -10,15 +10,16 @@ import 'supabase_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await _initNotifications();
-  await initializeService();
+  await initNotifications();
   runApp(AlertCenterApp());
+  await initializeService();
+
 }
 
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
 
 Future<void> _initNotifications() async {
-  const AndroidInitializationSettings androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+  const AndroidInitializationSettings androidSettings = AndroidInitializationSettings('@mipmap/ic_stat_new_releases');
   const InitializationSettings initSettings = InitializationSettings(android: androidSettings);
   await flutterLocalNotificationsPlugin.initialize(initSettings);
 }
