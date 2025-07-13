@@ -10,9 +10,9 @@ import 'supabase_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await initNotifications();
-  runApp(AlertCenterApp());
+  await _initNotifications();
   await initializeService();
+  runApp(AlertCenterApp());
 
 }
 

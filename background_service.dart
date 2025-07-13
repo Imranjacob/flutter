@@ -1,15 +1,20 @@
 import 'dart:async';
 import 'dart:ui';
+import 'package:flutter/material.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_background_service_android/flutter_background_service_android.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'supabase_service.dart';
+import 'alert_center_app.dart';
 
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
 FlutterLocalNotificationsPlugin();
 
 Future<void> initializeService() async {
+
+  WidgetsFlutterBinding.ensureInitialized();
+  final prefs = await SharedPreferences.getInstance();
   // Initialize notifications
   const AndroidInitializationSettings initializationSettingsAndroid =
   AndroidInitializationSettings('@mipmap/ic_stat_new_releases');
@@ -47,86 +52,89 @@ Future<void> initializeService() async {
   );
 }
 
+
 @pragma('vm:entry-point')
-void onStart(ServiceInstance service) async {
-  DartPluginRegistrant.ensureInitialized();
+ void onStart(ServiceInstance service) async {
+    DartPluginRegistrant.ensureInitialized();
+    final prefs = await SharedPreferences.getInstance();
 
-  final prefs = await SharedPreferences.getInstance();
-  final supabaseUrl = prefs.getString('supabaseUrl') ?? '';
-  final anonKey = prefs.getString('anonKey') ?? '';
+    // Initialize last alert tracking
+    int? lastAlertId = prefs.getInt('lastAlertId');
 
-  if (service is AndroidServiceInstance) {
-    await service.setAsForegroundService();
-  }
+    bool isFirstRun = true;
 
-  // Initial notification
-  flutterLocalNotificationsPlugin.show(
-    1234,
-    'Alert Service Running',
-    'Monitoring started at ${DateTime.now()}',
-    const NotificationDetails(
-      android: AndroidNotificationDetails(
-        'mychannel',
-        'Alert Service',
-        channelDescription: 'Background service channel for alerts',
-        importance: Importance.high,
-        priority: Priority.high,
-        ongoing: true,
-        icon: '@mipmap/ic_stat_new_releases',
-      ),
-    ),
-  );
-
-  // Periodic check for alerts
-  Timer.periodic(const Duration(minutes: 3), (timer) async {
-    if (service is AndroidServiceInstance && !(await service.isForegroundService())) {
-      return;
+    if (service is AndroidServiceInstance) {
+      await service.setAsForegroundService();
     }
 
-    try {
-      final alerts = await fetchLatestAlerts(supabaseUrl, anonKey);
-      if (alerts.isNotEmpty) {
-        final lastAlert = alerts.last;
-        flutterLocalNotificationsPlugin.show(
-          1235, // Different ID for alert notifications
-          'New Alert: ${lastAlert['bot_name'] ?? 'Unknown'}',
-          lastAlert['message'] ?? 'No message',
-          const NotificationDetails(
-            android: AndroidNotificationDetails(
-              'mychannel',
-              'Alert Service',
-              channelDescription: 'Background service channel for alerts',
-              importance: Importance.max,
-              priority: Priority.high,
-              icon: '@mipmap/ic_stat_new_releases',
-            ),
-          ),
-        );
-      }
-    } catch (e) {
-      print('Error fetching alerts: $e');
-    }
-
-    // Update service status
+    // Show persistent notification
     flutterLocalNotificationsPlugin.show(
       1234,
-      'Alert Service Running',
-      'Last checked at ${DateTime.now()}',
+      'Alert Service',
+      'Monitoring for new alerts...',
       const NotificationDetails(
         android: AndroidNotificationDetails(
           'mychannel',
           'Alert Service',
           channelDescription: 'Background service channel for alerts',
-          importance: Importance.high,
-          priority: Priority.high,
+          importance: Importance.low,
+          priority: Priority.low,
           ongoing: true,
           icon: '@mipmap/ic_stat_new_releases',
+          showWhen: false,
         ),
       ),
     );
-  });
 
-  service.on('stopService').listen((event) {
-    service.stopSelf();
-  });
-}
+    // Periodic check for new alerts
+    Timer.periodic(const Duration(minutes: 1), (timer) async {
+      try {
+        final supabaseUrl = prefs.getString('supabaseUrl') ?? '';
+        final anonKey = prefs.getString('anonKey') ?? '';
+
+        if (supabaseUrl.isEmpty || anonKey.isEmpty) return;
+
+        final alerts = await SupabaseService.fetchLatestAlerts(supabaseUrl, anonKey);
+        if (alerts.isNotEmpty) {
+          final latest = alerts.first;
+          final currentId = latest['id'];
+
+
+          // Skip notification on first run (just store the ID)
+          if (isFirstRun) {
+            await prefs.setInt('lastAlertId', currentId);
+            isFirstRun = false;
+            return;
+          }
+
+          // Only notify if it's a new alert
+          if (currentId != null && (lastAlertId == null || currentId != lastAlertId))
+             lastAlertId = currentId; {
+            await prefs.setInt('lastAlertId', currentId);
+
+            // Send notification
+            await flutterLocalNotificationsPlugin.show(
+              currentId.hashCode, // Unique ID for each alert
+              'New Alert: ${latest['title'] ?? 'Alert'}',
+              latest['message'] ?? '',
+              const NotificationDetails(
+                android: AndroidNotificationDetails(
+                  'mychannel',
+                  'Alert Service',
+                  channelDescription: 'New alert notifications',
+                  importance: Importance.high,
+                  priority: Priority.high,
+                  icon: '@mipmap/ic_stat_new_releases',
+                ),
+              ),
+            );
+
+            // Update UI if app is open
+            service.invoke('new_alert', latest);
+          }
+        }
+      } catch (e) {
+        print('Background fetch error: $e');
+      }
+    });
+  }

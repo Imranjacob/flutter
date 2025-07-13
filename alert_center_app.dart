@@ -1,13 +1,15 @@
-import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
+import 'dart:async';
 
+import 'package:flutter/material.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_background_service/flutter_background_service.dart';
+import 'background_service.dart' as BackgroundService;
 import 'notifications.dart';
 import 'supabase_service.dart';
 import 'settings_page.dart';
 import 'chat_page.dart';
-import 'background_service.dart'; // ✅ Make sure this exists
+import 'background_service.dart';
 
 class AlertCenterApp extends StatelessWidget {
   @override
@@ -31,11 +33,59 @@ class _AlertDashboardState extends State<AlertDashboard> {
   String supabaseUrl = '';
   String anonKey = '';
   bool connected = false;
+  bool _isLoading = false;
+  int? _lastAlertId;
+  Timer? _refreshTimer;
+
+  StreamSubscription? _backgroundSubscription;
+
 
   @override
   void initState() {
     super.initState();
-    _loadSettings().then((_) => fetchAlerts());
+    _showNotification;
+    _loadSettings().then((_) {
+      if (mounted) {
+        fetchAlerts().then((_) {
+          if (mounted) {
+            _startAutoRefresh();
+            _setupBackgroundListener();
+
+          }
+        });
+      }
+    });
+  }
+
+
+  void _setupBackgroundListener() {
+    FlutterBackgroundService().on('new_alert').listen((event) {
+      if (event != null && mounted) {
+        final dynamic potentialId = event['id'];
+        final int? currentId = potentialId is int ? potentialId : null;
+
+        if (currentId != null) {
+          setState(() {
+            _alerts = [event, ..._alerts];
+            _lastAlertId = currentId;
+          });
+        }
+      }
+    });
+  }
+
+
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
+  }
+
+  void _startAutoRefresh() {
+    _refreshTimer = Timer.periodic(Duration(seconds: 15), (_) {
+      fetchAlerts();
+    });
   }
 
   Future<void> _loadSettings() async {
@@ -46,16 +96,71 @@ class _AlertDashboardState extends State<AlertDashboard> {
     });
   }
 
-  Future<void> fetchAlerts() async {
-    final alerts = await fetchLatestAlerts(supabaseUrl, anonKey);
-    setState(() {
-      _alerts = alerts.reversed.toList();
-      connected = alerts.isNotEmpty;
-    });
 
-    if (alerts.isNotEmpty) {
-      await showNotification("🔔 New Alert", alerts.last['message'] ?? '');
+
+  Future<void> fetchAlerts() async {
+    setState(() => _isLoading = true);
+    try {
+      final alerts = await SupabaseService.fetchLatestAlerts(supabaseUrl, anonKey);
+      if (alerts.isNotEmpty) {
+        final latest = alerts.last;
+        final currentId = _parseAlertId(latest['id']);
+
+        if (currentId != null && (_lastAlertId == null || currentId != _lastAlertId)) {
+          _lastAlertId = currentId;
+          await Notifications.showNotification(
+              "🔔 New Alert",
+              latest['message']?.toString() ?? ''
+          );
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          _alerts = alerts.reversed.toList();
+          connected = alerts.isNotEmpty;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => connected = false);
+      }
+      debugPrint('Error fetching alerts: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
+  }
+
+  Future<void> _showNotification({required String title, required String body, required int id}) async {
+    const AndroidNotificationDetails androidPlatformChannelSpecifics =
+    AndroidNotificationDetails(
+      'mychannel',
+      'Alert Service',
+      channelDescription: 'Important alerts',
+      importance: Importance.high,
+      priority: Priority.high,
+      icon: '@mipmap/ic_stat_new_releases',
+    );
+
+    const NotificationDetails platformChannelSpecifics =
+    NotificationDetails(android: androidPlatformChannelSpecifics);
+
+    await flutterLocalNotificationsPlugin.show(
+      id, // Unique ID for each notification
+      title,
+      body,
+      platformChannelSpecifics,
+    );
+  }
+
+
+  int? _parseAlertId(dynamic id) {
+    if (id == null) return null;
+    if (id is int) return id;
+    if (id is String) return int.tryParse(id);
+    return null;
   }
 
   @override
@@ -152,7 +257,7 @@ class _AlertDashboardState extends State<AlertDashboard> {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () async {
           try {
-            await initializeService();
+            await BackgroundService.initializeService();
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('Background service started')),
             );

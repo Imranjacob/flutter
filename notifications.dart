@@ -1,38 +1,38 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
-final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
-FlutterLocalNotificationsPlugin();
+class Notifications {
+  static final FlutterLocalNotificationsPlugin _notificationsPlugin =
+  FlutterLocalNotificationsPlugin();
 
-Future<void> initNotifications() async {
-  const AndroidInitializationSettings androidSettings =
-  AndroidInitializationSettings('@mipmap/ic_stat_new_releases');
+  static Future<void> init() async {
+    const AndroidInitializationSettings initializationSettingsAndroid =
+    AndroidInitializationSettings('@mipmap/ic_stat_new_releases');
 
-  const InitializationSettings settings =
-  InitializationSettings(android: androidSettings);
+    await _notificationsPlugin.initialize(
+      const InitializationSettings(android: initializationSettingsAndroid),
 
-  await flutterLocalNotificationsPlugin.initialize(
-    settings,
-    onDidReceiveNotificationResponse: (details) {
-      // Handle notification taps if needed
-    },
-  );
-}
+    );
+  }
 
-Future<void> showNotification(String title, String body) async {
-  const androidDetails = AndroidNotificationDetails(
-    'mychannel',
-    'Alert Service',
-    channelDescription: 'Background service channel for alerts',
-    importance: Importance.high,
-    priority: Priority.high,
-    icon: '@mipmap/ic_stat_new_releases',
-    ongoing: false,
-  );
+  static Future<void> showNotification(String title, String body) async {
+    const AndroidNotificationDetails androidPlatformChannelSpecifics =
+    AndroidNotificationDetails(
+      'mychannel',
+      'Alert Service',
+      channelDescription: 'Important alerts',
+      importance: Importance.high,
+      priority: Priority.high,
+      icon: '@mipmap/ic_stat_new_releases',
+    );
 
-  await flutterLocalNotificationsPlugin.show(
-    DateTime.now().millisecondsSinceEpoch ~/ 1000, // Unique ID based on timestamp
-    title,
-    body,
-    const NotificationDetails(android: androidDetails),
-  );
+    const NotificationDetails platformChannelSpecifics =
+    NotificationDetails(android: androidPlatformChannelSpecifics);
+
+    await _notificationsPlugin.show(
+      0, // Notification ID
+      title,
+      body,
+      platformChannelSpecifics,
+    );
+  }
 }
