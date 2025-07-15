@@ -104,7 +104,7 @@ class _AlertDashboardState extends State<AlertDashboard> {
       final alerts = await SupabaseService.fetchLatestAlerts(supabaseUrl, anonKey);
       if (alerts.isNotEmpty) {
         final latest = alerts.last;
-        final currentId = _parseAlertId(latest['id']);
+        final currentId = _parseAlertId(latest['ID']);
 
         if (currentId != null && (_lastAlertId == null || currentId != _lastAlertId)) {
           _lastAlertId = currentId;
@@ -141,7 +141,7 @@ class _AlertDashboardState extends State<AlertDashboard> {
       channelDescription: 'Important alerts',
       importance: Importance.high,
       priority: Priority.high,
-      icon: '@mipmap/ic_stat_new_releases',
+      icon: '@mipmap/ic_launcher',
     );
 
     const NotificationDetails platformChannelSpecifics =

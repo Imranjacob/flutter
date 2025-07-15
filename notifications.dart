@@ -6,7 +6,7 @@ class Notifications {
 
   static Future<void> init() async {
     const AndroidInitializationSettings initializationSettingsAndroid =
-    AndroidInitializationSettings('@mipmap/ic_stat_new_releases');
+    AndroidInitializationSettings('@mipmap/ic_launcher');
 
     await _notificationsPlugin.initialize(
       const InitializationSettings(android: initializationSettingsAndroid),
@@ -22,7 +22,7 @@ class Notifications {
       channelDescription: 'Important alerts',
       importance: Importance.high,
       priority: Priority.high,
-      icon: '@mipmap/ic_stat_new_releases',
+      icon: '@mipmap/ic_launcher',
     );
 
     const NotificationDetails platformChannelSpecifics =
