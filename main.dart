@@ -1,17 +1,24 @@
-import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/cupertino.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
-import 'alert_center_app.dart';
-import 'background_service.dart';
-import 'notifications.dart';
-import 'supabase_service.dart';
 
-void main() async {
+import 'alert_center_app.dart';
+
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   runApp(AlertCenterApp());
-  await Notifications.init();
-  await initializeService();
+  await Firebase.initializeApp();
+
+  // Get FCM token
+  String? token = await FirebaseMessaging.instance.getToken();
+  print("🔑 FCM Token: $token");
+
+  // Save to SharedPreferences
+  final prefs = await SharedPreferences.getInstance();
+  if (token != null) {
+    await prefs.setString('fcmToken', token);
+  }
+
 
 }

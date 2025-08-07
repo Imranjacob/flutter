@@ -4,7 +4,7 @@ import 'package:http/http.dart' as http;
 class SupabaseService {
   static Future<List<dynamic>> fetchLatestAlerts(String supabaseUrl, String anonKey) async {
     try {
-      final url = Uri.parse('$supabaseUrl/rest/v1/alerts?select=*&order=timestamp.desc');
+      final url = Uri.parse('$supabaseUrl/rest/v1/alerts?select=*&order=ID.desc');
       final response = await http.get(
         url,
         headers: {

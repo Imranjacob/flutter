@@ -6,11 +6,13 @@ class SettingsPage extends StatefulWidget {
   _SettingsPageState createState() => _SettingsPageState();
 }
 
-bool _obscureKey = true;
-
 class _SettingsPageState extends State<SettingsPage> {
   TextEditingController urlController = TextEditingController();
   TextEditingController keyController = TextEditingController();
+  TextEditingController fcmKeyController = TextEditingController();
+
+  bool _obscureKey = true;
+  bool _obscureFcm = true;
 
   @override
   void initState() {
@@ -22,13 +24,17 @@ class _SettingsPageState extends State<SettingsPage> {
     final prefs = await SharedPreferences.getInstance();
     urlController.text = prefs.getString('supabaseUrl') ?? '';
     keyController.text = prefs.getString('anonKey') ?? '';
+    fcmKeyController.text = prefs.getString('fcmToken') ?? '';
   }
 
   Future<void> _saveSettings() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('supabaseUrl', urlController.text);
     await prefs.setString('anonKey', keyController.text);
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("✅ Settings saved.")));
+    await prefs.setString('fcmToken', fcmKeyController.text);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text("✅ Settings saved.")),
+    );
   }
 
   @override
@@ -49,7 +55,8 @@ class _SettingsPageState extends State<SettingsPage> {
               decoration: InputDecoration(
                 labelText: "Supabase anon key",
                 suffixIcon: IconButton(
-                  icon: Icon(_obscureKey ? Icons.visibility : Icons.visibility_off),
+                  icon: Icon(
+                      _obscureKey ? Icons.visibility : Icons.visibility_off),
                   onPressed: () {
                     setState(() {
                       _obscureKey = !_obscureKey;
@@ -59,12 +66,29 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
               obscureText: _obscureKey,
             ),
+            SizedBox(height: 12),
+            TextField(
+              controller: fcmKeyController,
+              decoration: InputDecoration(
+                labelText: "FCM Server Key",
+                suffixIcon: IconButton(
+                  icon: Icon(
+                      _obscureFcm ? Icons.visibility : Icons.visibility_off),
+                  onPressed: () {
+                    setState(() {
+                      _obscureFcm = !_obscureFcm;
+                    });
+                  },
+                ),
+              ),
+              obscureText: _obscureFcm,
+            ),
             SizedBox(height: 20),
             ElevatedButton.icon(
               onPressed: _saveSettings,
               icon: Icon(Icons.save),
               label: Text("Save Settings"),
-            )
+            ),
           ],
         ),
       ),
