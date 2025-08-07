@@ -1,10 +1,8 @@
 import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
-import 'background_service.dart' as BackgroundService;
 import 'notifications.dart';
 import 'supabase_service.dart';
 import 'settings_page.dart';
@@ -16,9 +14,27 @@ class AlertCenterApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Alert Center',
-      theme: ThemeData.dark(),
-      home: AlertDashboard(),
       debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        primaryColor: Color(0xFF1E1E1E),
+        scaffoldBackgroundColor: Color(0xFF121212),
+        appBarTheme: AppBarTheme(
+          backgroundColor: Color(0xFF1E1E1E),
+          elevation: 0,
+          centerTitle: true,
+          iconTheme: IconThemeData(color: Color(0xFFBB86FC)),
+          titleTextStyle: TextStyle(color: Colors.white, fontSize: 20),
+        ),
+        textTheme: TextTheme(
+          bodyLarge: TextStyle(color: Colors.white),
+          bodyMedium: TextStyle(color: Colors.white),
+        ),
+        colorScheme: ColorScheme.dark(
+          primary: Color(0xFFBB86FC),
+          secondary: Color(0xFF03DAC6),
+        ),
+      ),
+      home: AlertDashboard(),
     );
   }
 }
@@ -36,32 +52,27 @@ class _AlertDashboardState extends State<AlertDashboard> {
   bool _isLoading = false;
   int? _lastAlertId;
   Timer? _refreshTimer;
-
   StreamSubscription? _backgroundSubscription;
-
 
   @override
   void initState() {
     super.initState();
-    _showNotification;
     _loadSettings().then((_) {
       if (mounted) {
         fetchAlerts().then((_) {
           if (mounted) {
             _startAutoRefresh();
             _setupBackgroundListener();
-
           }
         });
       }
     });
   }
 
-
   void _setupBackgroundListener() {
     FlutterBackgroundService().on('new_alert').listen((event) {
       if (event != null && mounted) {
-        final dynamic potentialId = event['id'];
+        final dynamic potentialId = event['ID'];
         final int? currentId = potentialId is int ? potentialId : null;
 
         if (currentId != null) {
@@ -74,11 +85,10 @@ class _AlertDashboardState extends State<AlertDashboard> {
     });
   }
 
-
-
   @override
   void dispose() {
     _refreshTimer?.cancel();
+    _backgroundSubscription?.cancel();
     super.dispose();
   }
 
@@ -96,14 +106,12 @@ class _AlertDashboardState extends State<AlertDashboard> {
     });
   }
 
-
-
   Future<void> fetchAlerts() async {
     setState(() => _isLoading = true);
     try {
       final alerts = await SupabaseService.fetchLatestAlerts(supabaseUrl, anonKey);
       if (alerts.isNotEmpty) {
-        final latest = alerts.last;
+        final latest = alerts.first;
         final currentId = _parseAlertId(latest['ID']);
 
         if (currentId != null && (_lastAlertId == null || currentId != _lastAlertId)) {
@@ -117,7 +125,7 @@ class _AlertDashboardState extends State<AlertDashboard> {
 
       if (mounted) {
         setState(() {
-          _alerts = alerts.reversed.toList();
+          _alerts = alerts;
           connected = alerts.isNotEmpty;
         });
       }
@@ -133,29 +141,6 @@ class _AlertDashboardState extends State<AlertDashboard> {
     }
   }
 
-  Future<void> _showNotification({required String title, required String body, required int id}) async {
-    const AndroidNotificationDetails androidPlatformChannelSpecifics =
-    AndroidNotificationDetails(
-      'mychannel',
-      'Alert Service',
-      channelDescription: 'Important alerts',
-      importance: Importance.high,
-      priority: Priority.high,
-      icon: '@mipmap/ic_launcher',
-    );
-
-    const NotificationDetails platformChannelSpecifics =
-    NotificationDetails(android: androidPlatformChannelSpecifics);
-
-    await flutterLocalNotificationsPlugin.show(
-      id, // Unique ID for each notification
-      title,
-      body,
-      platformChannelSpecifics,
-    );
-  }
-
-
   int? _parseAlertId(dynamic id) {
     if (id == null) return null;
     if (id is int) return id;
@@ -166,20 +151,15 @@ class _AlertDashboardState extends State<AlertDashboard> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: Color(0xFF121212),
       appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Text('📡 Supabase Alerts'),
-            Text(
-              connected ? "🟢 Connected" : "🔴 Disconnected",
-              style: TextStyle(fontSize: 12, color: Colors.grey),
-            )
-          ],
-        ),
-        centerTitle: true,
+        title: Text('Alerts'),
         actions: [
-          IconButton(icon: Icon(Icons.refresh), onPressed: fetchAlerts),
+          IconButton(
+            icon: Icon(Icons.refresh),
+            onPressed: fetchAlerts,
+            tooltip: 'Refresh',
+          ),
           IconButton(
             icon: Icon(Icons.settings),
             onPressed: () async {
@@ -190,6 +170,7 @@ class _AlertDashboardState extends State<AlertDashboard> {
               await _loadSettings();
               await fetchAlerts();
             },
+            tooltip: 'Settings',
           ),
           IconButton(
             icon: Icon(Icons.message),
@@ -199,54 +180,69 @@ class _AlertDashboardState extends State<AlertDashboard> {
                 MaterialPageRoute(builder: (_) => ChatPage()),
               );
             },
+            tooltip: 'Chat',
           ),
         ],
       ),
       body: _alerts.isEmpty
-          ? Center(child: Text("No alerts detected. Chill."))
+          ? Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.notifications_off, size: 48, color: Colors.grey),
+            SizedBox(height: 16),
+            Text(
+              "No alerts detected",
+              style: TextStyle(color: Colors.grey, fontSize: 18),
+            ),
+          ],
+        ),
+      )
           : ListView.builder(
+        padding: EdgeInsets.all(8),
         itemCount: _alerts.length,
         itemBuilder: (context, index) {
           final alert = _alerts[index];
           final msg = alert['message'] ?? '';
           final ts = alert['timestamp'] ?? '';
           final bot = alert['bot_name'] ?? '';
+
           return Card(
-            margin: EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-            color: Colors.grey.shade900,
+            margin: EdgeInsets.symmetric(vertical: 4),
+            color: Color(0xFF1E1E1E),
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(8),
             ),
             child: Padding(
-              padding: const EdgeInsets.all(10.0),
+              padding: const EdgeInsets.all(12.0),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    padding: EdgeInsets.all(6),
-                    margin: EdgeInsets.only(bottom: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.deepPurple.shade200.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text('Timestamp: $ts', style: TextStyle(fontSize: 15)),
+                  Row(
+                    children: [
+                      Icon(Icons.notifications, size: 16, color: Color(0xFFBB86FC)),
+                      SizedBox(width: 8),
+                      Text(
+                        '${bot.isNotEmpty ? bot : 'Alert'}',
+                        style: TextStyle(
+                          color: Color(0xFFBB86FC),
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Spacer(),
+                      Text(
+                        ts.toString(),
+                        style: TextStyle(
+                          color: Colors.grey,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
                   ),
-                  Container(
-                    padding: EdgeInsets.all(6),
-                    margin: EdgeInsets.only(bottom: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.tealAccent.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text('Message: $msg', style: TextStyle(fontSize: 15)),
-                  ),
-                  Container(
-                    padding: EdgeInsets.all(6),
-                    decoration: BoxDecoration(
-                      color: Colors.orangeAccent.withOpacity(0.2),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text('Bot Name: $bot', style: TextStyle(fontSize: 15)),
+                  SizedBox(height: 8),
+                  Text(
+                    msg,
+                    style: TextStyle(color: Colors.white),
                   ),
                 ],
               ),
@@ -254,21 +250,28 @@ class _AlertDashboardState extends State<AlertDashboard> {
           );
         },
       ),
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: FloatingActionButton(
+        backgroundColor: Color(0xFFBB86FC),
         onPressed: () async {
           try {
-            await BackgroundService.initializeService();
+            await initializeService();
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Background service started')),
+              SnackBar(
+                content: Text('Background service started'),
+                backgroundColor: Color(0xFF1E1E1E),
+              ),
             );
           } catch (e) {
             ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Failed to start service: $e')),
+              SnackBar(
+                content: Text('Failed to start service: $e'),
+                backgroundColor: Colors.red,
+              ),
             );
           }
         },
-        icon: const Icon(Icons.play_arrow),
-        label: const Text('Start Service'),
+        child: Icon(Icons.play_arrow, color: Colors.black),
+        tooltip: 'Start Service',
       ),
     );
   }
